@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
 @Component({
@@ -6,7 +6,7 @@ import { HttpClient } from '@angular/common/http';
   templateUrl: './generate.component.html',
   styleUrls: ['./generate.component.css']
 })
-export class GenerateComponent {
+export class GenerateComponent implements OnDestroy {
   sql = `CREATE TABLE users (
   id INT,
   first_name VARCHAR(50),
@@ -22,6 +22,7 @@ export class GenerateComponent {
   loading = false;
   error = '';
 
+  private _downloadUrl = '';
   private readonly apiUrl = '/api/generate';
 
   constructor(private http: HttpClient) {}
@@ -34,6 +35,7 @@ export class GenerateComponent {
     this.loading = true;
     this.error = '';
     this.result = '';
+    this.revokeDownloadUrl();
 
     this.http
       .post(this.apiUrl, { sql: this.sql, rows: this.rows, format: this.format }, { responseType: 'text' })
@@ -41,6 +43,7 @@ export class GenerateComponent {
         next: (data) => {
           this.result = data;
           this.loading = false;
+          this.createDownloadUrl();
         },
         error: (err) => {
           this.error = err.error ?? 'An error occurred. Is the backend running on port 8080?';
@@ -61,7 +64,23 @@ export class GenerateComponent {
   }
 
   get downloadUrl(): string {
+    return this._downloadUrl;
+  }
+
+  ngOnDestroy(): void {
+    this.revokeDownloadUrl();
+  }
+
+  private createDownloadUrl(): void {
+    this.revokeDownloadUrl();
     const blob = new Blob([this.result], { type: this.downloadMimeType });
-    return URL.createObjectURL(blob);
+    this._downloadUrl = URL.createObjectURL(blob);
+  }
+
+  private revokeDownloadUrl(): void {
+    if (this._downloadUrl) {
+      URL.revokeObjectURL(this._downloadUrl);
+      this._downloadUrl = '';
+    }
   }
 }

@@ -40,7 +40,8 @@ public class GenerateController {
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid schema: {}", e.getMessage());
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body("Schema validation failed. Please check your CREATE TABLE syntax.");
         } catch (Exception e) {
             logger.error("Unexpected error during generation", e);
             return ResponseEntity.internalServerError().body("An unexpected error occurred.");

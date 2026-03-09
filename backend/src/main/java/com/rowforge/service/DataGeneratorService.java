@@ -179,6 +179,11 @@ public class DataGeneratorService {
         return "'" + value.replace("'", "''") + "'";
     }
 
+    /** Returns true only if the value is a properly SQL-quoted string (starts and ends with '). */
+    private boolean isSqlQuoted(String val) {
+        return val.length() >= 2 && val.charAt(0) == '\'' && val.charAt(val.length() - 1) == '\'';
+    }
+
     // ── Output builders ──────────────────────────────────────────────────────
 
     private String buildSql(String tableName, List<String> columnNames, List<List<String>> allRows) {
@@ -198,7 +203,7 @@ public class DataGeneratorService {
             List<String> csvRow = new ArrayList<>();
             for (String val : row) {
                 // Strip SQL single-quotes; wrap in CSV double-quotes
-                String stripped = val.startsWith("'")
+                String stripped = isSqlQuoted(val)
                         ? val.substring(1, val.length() - 1).replace("''", "'")
                         : val;
                 csvRow.add("\"" + stripped.replace("\"", "\"\"") + "\"");
@@ -217,7 +222,7 @@ public class DataGeneratorService {
             for (int j = 0; j < columnNames.size(); j++) {
                 String val = row.get(j);
                 String jsonVal;
-                if (val.startsWith("'")) {
+                if (isSqlQuoted(val)) {
                     String inner = val.substring(1, val.length() - 1).replace("''", "'");
                     jsonVal = "\"" + inner.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
                 } else {
