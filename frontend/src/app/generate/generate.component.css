@@ -1,0 +1,184 @@
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+/* ── Header ── */
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2.4rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  color: #555;
+  margin-top: 0.25rem;
+  font-size: 1rem;
+}
+
+/* ── Card ── */
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+}
+
+/* ── Form elements ── */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 1.25rem;
+}
+
+.form-group.inline {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 0.35rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+textarea {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875rem;
+  padding: 0.75rem;
+  border: 1.5px solid #d0d5dd;
+  border-radius: 8px;
+  resize: vertical;
+  background: #fafafa;
+  color: #222;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: #4f46e5;
+  background: #fff;
+}
+
+input[type='number'],
+select {
+  padding: 0.6rem 0.75rem;
+  border: 1.5px solid #d0d5dd;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: #fafafa;
+  color: #222;
+  transition: border-color 0.2s;
+}
+
+input[type='number']:focus,
+select:focus {
+  outline: none;
+  border-color: #4f46e5;
+  background: #fff;
+}
+
+/* ── Options row ── */
+.options-row {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+/* ── Generate button ── */
+.btn-generate {
+  padding: 0.65rem 1.75rem;
+  background: #4f46e5;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, opacity 0.2s;
+  height: 40px;
+  align-self: flex-end;
+}
+
+.btn-generate:hover:not(:disabled) {
+  background: #4338ca;
+}
+
+.btn-generate:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ── Error ── */
+.error {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: #856404;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+/* ── Result ── */
+.result-section {
+  margin-top: 1rem;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.result-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.btn-download {
+  padding: 0.45rem 1rem;
+  background: #059669;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.btn-download:hover {
+  background: #047857;
+}
+
+.output {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  padding: 1.25rem;
+  border-radius: 8px;
+  overflow: auto;
+  max-height: 500px;
+  white-space: pre;
+  margin: 0;
+}
