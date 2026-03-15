@@ -9,6 +9,7 @@ import net.sf.jsqlparser.statement.create.table.ColumnDefinition;
 import net.sf.jsqlparser.statement.create.table.CreateTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.rowforge.model.DatasetGeneration;
@@ -24,20 +25,37 @@ public class DataGeneratorService {
     private static final Logger logger = LoggerFactory.getLogger(DataGeneratorService.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final DatasetGenerationRepository datasetGenerationRepository;
+    private final String supabaseDbUrl;
 
-    public DataGeneratorService(DatasetGenerationRepository datasetGenerationRepository) {
+    public DataGeneratorService(
+            DatasetGenerationRepository datasetGenerationRepository,
+            @Value("${SUPABASE_DB_URL:}") String supabaseDbUrl) {
         this.datasetGenerationRepository = datasetGenerationRepository;
+        this.supabaseDbUrl = supabaseDbUrl;
     }
 
 
-    public void logGeneration(String anomId, UUID userId, int rows, int tables) {
+    public void logGeneration(String anonId, UUID userId, int rows, int tables) {
+        if (!isDatabaseConfigured()) {
+            logger.warn("Skipping generation persistence: SUPABASE_DB_URL is not configured.");
+            return;
+        }
+
         DatasetGeneration record = new DatasetGeneration();
-        record.setAnom_id(anomId);
+        record.setAnon_id(anonId);
         record.setUser_id(userId);
         record.setRows_generated(rows);
         record.setTables_generated(tables);
-        
-        datasetGenerationRepository.save(record);
+
+        try {
+            datasetGenerationRepository.save(record);
+        } catch (Exception e) {
+            logger.warn("Skipping generation persistence: {}", e.getMessage());
+        }
+    }
+
+    private boolean isDatabaseConfigured() {
+        return supabaseDbUrl != null && !supabaseDbUrl.isBlank() && !supabaseDbUrl.contains("${");
     }
 
     /**

@@ -50,11 +50,35 @@ rowforge/
 - Maven 3.8+
 - Node.js 18+ and npm 9+
 
+If you use SDKMAN, this repository includes a `.sdkmanrc` pinned to Java 21. Activate it from the project root:
+
+```bash
+cd /workspaces/rowforge
+sdk env
+java -version
+```
+
+If your shell still uses Java 11, set `JAVA_HOME` manually:
+
+```bash
+export JAVA_HOME=/usr/local/sdkman/candidates/java/21.0.9-ms
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version
+```
+
 ### 1 – Run the Backend
 
 ```bash
 cd backend
 mvn spring-boot:run
+```
+
+Dataset generation works without a database. To enable persistence logs in Supabase/PostgreSQL, export:
+
+```bash
+export SUPABASE_DB_URL="jdbc:postgresql://<host>:5432/<database>?sslmode=require"
+export SUPABASE_DB_USERNAME="<username>"
+export SUPABASE_DB_PASSWORD="<password>"
 ```
 
 The API will be available at `http://localhost:8080`.

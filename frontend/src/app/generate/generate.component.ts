@@ -24,6 +24,7 @@ export class GenerateComponent implements OnDestroy {
 
   private _downloadUrl = '';
   private readonly apiUrl = '/api/generate';
+  private readonly anonIdStorageKey = 'rowforgeAnonId';
 
   constructor(private http: HttpClient) {}
 
@@ -38,7 +39,14 @@ export class GenerateComponent implements OnDestroy {
     this.revokeDownloadUrl();
 
     this.http
-      .post(this.apiUrl, { sql: this.sql, rows: this.rows, format: this.format }, { responseType: 'text' })
+      .post(
+        this.apiUrl,
+        { sql: this.sql, rows: this.rows, format: this.format },
+        {
+          responseType: 'text',
+          headers: { 'X-Anon-Id': this.getOrCreateAnonId() },
+        }
+      )
       .subscribe({
         next: (data) => {
           this.result = data;
@@ -82,5 +90,16 @@ export class GenerateComponent implements OnDestroy {
       URL.revokeObjectURL(this._downloadUrl);
       this._downloadUrl = '';
     }
+  }
+
+  private getOrCreateAnonId(): string {
+    const existing = localStorage.getItem(this.anonIdStorageKey);
+    if (existing && existing.trim()) {
+      return existing;
+    }
+
+    const created = crypto.randomUUID();
+    localStorage.setItem(this.anonIdStorageKey, created);
+    return created;
   }
 }

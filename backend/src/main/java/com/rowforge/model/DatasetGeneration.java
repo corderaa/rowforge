@@ -5,6 +5,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Table;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -14,6 +16,7 @@ import jakarta.persistence.PrePersist;
  * Class that stores information about each dataset generation in the APP
  */
 @Entity
+@Table(name = "dataset_generations")
 public class DatasetGeneration implements Serializable {
 
     public DatasetGeneration() {
@@ -22,18 +25,25 @@ public class DatasetGeneration implements Serializable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "id", updatable = false, nullable = false)
     private UUID id;
 
-    private String anom_id;
+    @Column(name = "anon_id", nullable = false)
+    private String anon_id;
 
+    @Column(name = "user_id")
     private UUID user_id;
 
+    @Column(name = "rows_generated")
     private Integer rows_generated;
 
+    @Column(name = "tables_generated")
     private Integer tables_generated;
 
+    @Column(name = "db_type")
     private String db_type;
 
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant created_at;
 
     @PrePersist
@@ -50,12 +60,12 @@ public class DatasetGeneration implements Serializable {
         this.id = id;
     }
 
-    public String getAnom_id() {
-        return anom_id;
+    public String getAnon_id() {
+        return anon_id;
     }
 
-    public void setAnom_id(String anom_id) {
-        this.anom_id = anom_id;
+    public void setAnon_id(String anon_id) {
+        this.anon_id = anon_id;
     }
 
     public UUID getUser_id() {

@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "*")
@@ -28,6 +30,9 @@ public class GenerateController {
         logger.info("Received generate request: {} rows, format={}", schema.getRows(), schema.getFormat());
 
         String anonId = request.getHeader("X-Anon-Id");
+        if (anonId == null || anonId.isBlank()) {
+            anonId = UUID.randomUUID().toString();
+        }
 
         if (schema.getSql() == null || schema.getSql().isBlank()) {
             return ResponseEntity.badRequest().body("SQL schema must not be empty.");
