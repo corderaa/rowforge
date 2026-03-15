@@ -48,7 +48,7 @@ export class GenerateComponent implements OnDestroy {
         error: (err) => {
           this.error = err.error ?? 'An error occurred. Is the backend running on port 8080?';
           this.loading = false;
-        }
+        },
       });
   }
 

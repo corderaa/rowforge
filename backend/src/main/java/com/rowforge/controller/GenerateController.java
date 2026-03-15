@@ -2,6 +2,9 @@ package com.rowforge.controller;
 
 import com.rowforge.model.Schema;
 import com.rowforge.service.DataGeneratorService;
+
+import jakarta.servlet.http.HttpServletRequest;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -21,8 +24,10 @@ public class GenerateController {
     }
 
     @PostMapping("/generate")
-    public ResponseEntity<String> generate(@RequestBody Schema schema) {
+    public ResponseEntity<String> generate(HttpServletRequest request, @RequestBody Schema schema) {
         logger.info("Received generate request: {} rows, format={}", schema.getRows(), schema.getFormat());
+
+        String anonId = request.getHeader("X-Anon-Id");
 
         if (schema.getSql() == null || schema.getSql().isBlank()) {
             return ResponseEntity.badRequest().body("SQL schema must not be empty.");
@@ -37,6 +42,10 @@ public class GenerateController {
         try {
             String result = dataGeneratorService.generate(
                     schema.getSql(), schema.getRows(), schema.getFormat());
+
+            if (null != result) {
+                dataGeneratorService.logGeneration(anonId, null, schema.getRows(), schema.getTables());
+            }
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             logger.warn("Invalid schema: {}", e.getMessage());

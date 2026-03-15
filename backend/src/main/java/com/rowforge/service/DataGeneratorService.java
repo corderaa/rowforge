@@ -11,6 +11,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.rowforge.model.DatasetGeneration;
+import com.rowforge.repository.DatasetGenerationRepository;
+
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -20,6 +23,22 @@ public class DataGeneratorService {
 
     private static final Logger logger = LoggerFactory.getLogger(DataGeneratorService.class);
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private final DatasetGenerationRepository datasetGenerationRepository;
+
+    public DataGeneratorService(DatasetGenerationRepository datasetGenerationRepository) {
+        this.datasetGenerationRepository = datasetGenerationRepository;
+    }
+
+
+    public void logGeneration(String anomId, UUID userId, int rows, int tables) {
+        DatasetGeneration record = new DatasetGeneration();
+        record.setAnom_id(anomId);
+        record.setUser_id(userId);
+        record.setRows_generated(rows);
+        record.setTables_generated(tables);
+        
+        datasetGenerationRepository.save(record);
+    }
 
     /**
      * Parses the given SQL CREATE TABLE schema and generates fake rows.
@@ -51,6 +70,13 @@ public class DataGeneratorService {
             logger.error("Failed to parse SQL schema: {}", e.getMessage());
             throw new IllegalArgumentException("Invalid SQL schema: " + e.getMessage(), e);
         }
+    }
+
+    public String saveTrace() {
+
+
+
+        return null;
     }
 
     private String generateForTable(CreateTable createTable, int rows, String format) {
