@@ -147,3 +147,18 @@ mvn test
 ## License
 
 [MIT](LICENSE) © 2026 Ugaitz Cordero
+
+---
+
+## Roadmap
+
+Planned developments and improvements:
+
+- **Improve Faker execution**: robust handling for varargs, `faker.options().option(...)`, and edge cases such as zero-day `faker.date().past(0, TimeUnit.DAYS)` to avoid runtime fallbacks.
+- **Better AI-driven suggestions**: improve prompt handling and validation for suggested `faker` expressions from the AI, with stricter parsing and safe defaults.
+- **Schema features**: support column-level constraints (ENUM-like sets, CHECK constraints) and richer date/time types mapping.
+- **Export enhancements**: streaming large CSV/JSON exports and configurable SQL dialects (Postgres, MySQL, SQLite).
+- **Persistence and analytics**: optional Supabase/Postgres persistence for generation history, plus usage analytics and anonymized telemetry.
+- **UI improvements**: preview generated rows in the app, column-level customization, and downloadable export options.
+
+Contributions welcome — open a PR or issue with feature proposals or bug reports.
