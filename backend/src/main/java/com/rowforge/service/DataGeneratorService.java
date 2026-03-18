@@ -11,6 +11,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.ai.chat.client.ChatClient;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.rowforge.model.DatasetGeneration;
 import com.rowforge.repository.DatasetGenerationRepository;
@@ -26,12 +28,17 @@ public class DataGeneratorService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private final DatasetGenerationRepository datasetGenerationRepository;
     private final String supabaseDbUrl;
+    private final ChatClient chatClient;
+    private final ObjectMapper objectMapper;
 
     public DataGeneratorService(
             DatasetGenerationRepository datasetGenerationRepository,
+            ChatClient chatClient,
             @Value("${SUPABASE_DB_URL:}") String supabaseDbUrl) {
         this.datasetGenerationRepository = datasetGenerationRepository;
+        this.chatClient = chatClient;
         this.supabaseDbUrl = supabaseDbUrl;
+        this.objectMapper = new ObjectMapper();
     }
 
 
@@ -110,11 +117,16 @@ public class DataGeneratorService {
                 .map(ColumnDefinition::getColumnName)
                 .toList();
 
+        // Get AI-determined Faker statements for each column
+        Map<String, String> fakerStatements = getAIFakerStatements(tableName, columns);
+
         List<List<String>> allRows = new ArrayList<>();
         for (int i = 0; i < rows; i++) {
             List<String> rowValues = new ArrayList<>();
             for (ColumnDefinition col : columns) {
-                rowValues.add(generateValue(faker, col, i + 1));
+                String colName = col.getColumnName();
+                String fakerStatement = fakerStatements.getOrDefault(colName, "faker.datatype.string()");
+                rowValues.add(generateValueFromFaker(faker, col, fakerStatement, i + 1));
             }
             allRows.add(rowValues);
         }
@@ -126,97 +138,203 @@ public class DataGeneratorService {
         };
     }
 
-    private String generateValue(Faker faker, ColumnDefinition col, int rowIndex) {
-        String colName = col.getColumnName().toLowerCase();
-        String typeName = col.getColDataType().getDataType().toUpperCase();
+    private Map<String, String> getAIFakerStatements(String tableName, List<ColumnDefinition> columns) {
+        try {
+            StringBuilder columnsInfo = new StringBuilder();
+            for (ColumnDefinition col : columns) {
+                String dataType = col.getColDataType().getDataType();
+                columnsInfo.append(String.format("- %s (%s)\n", col.getColumnName(), dataType));
+            }
 
-        // --- Infer by column name for realistic data ---
-        if (colName.equals("id") || colName.endsWith("_id")) {
-            return String.valueOf(rowIndex);
-        }
-        if (colName.contains("first_name") || colName.equals("firstname")) {
-            return quote(faker.name().firstName());
-        }
-        if (colName.contains("last_name") || colName.equals("lastname")) {
-            return quote(faker.name().lastName());
-        }
-        if (colName.equals("name") || colName.contains("full_name") || colName.contains("fullname")) {
-            return quote(faker.name().fullName());
-        }
-        if (colName.contains("email")) {
-            return quote(faker.internet().emailAddress());
-        }
-        if (colName.contains("phone") || colName.contains("mobile")) {
-            return quote(faker.phoneNumber().phoneNumber());
-        }
-        if (colName.contains("address") || colName.contains("street")) {
-            return quote(faker.address().streetAddress());
-        }
-        if (colName.contains("city")) {
-            return quote(faker.address().city());
-        }
-        if (colName.contains("country")) {
-            return quote(faker.address().country());
-        }
-        if (colName.contains("zip") || colName.contains("postal")) {
-            return quote(faker.address().zipCode());
-        }
-        if (colName.contains("company") || colName.contains("employer")) {
-            return quote(faker.company().name());
-        }
-        if (colName.contains("job") || colName.contains("title") || colName.contains("position")) {
-            return quote(faker.job().title());
-        }
-        if (colName.contains("username") || colName.contains("user_name")) {
-            return quote(faker.internet().username());
-        }
-        if (colName.contains("password") || colName.contains("pwd")) {
-            return quote(faker.internet().password(8, 16));
-        }
-        if (colName.contains("url") || colName.contains("website")) {
-            return quote(faker.internet().url());
-        }
-        if (colName.contains("description") || colName.contains("bio") || colName.contains("notes")) {
-            return quote(faker.lorem().sentence());
-        }
-        if (colName.contains("birth") || colName.contains("dob")) {
-            LocalDate dob = LocalDate.now().minusYears(faker.number().numberBetween(18, 80));
-            return quote(dob.format(DATE_FORMATTER));
-        }
-        if (colName.contains("price") || colName.contains("amount") || colName.contains("salary")) {
-            return String.format("%.2f", faker.number().randomDouble(2, 10, 10000));
-        }
-        if (colName.contains("age")) {
-            return String.valueOf(faker.number().numberBetween(18, 80));
-        }
-        if (colName.contains("status")) {
-            String[] statuses = {"active", "inactive", "pending", "suspended"};
-            return quote(statuses[faker.number().numberBetween(0, statuses.length)]);
-        }
+            String prompt = String.format("""
+                    Analyze this database table schema and suggest the BEST datafaker (Java Faker library) method for each column.
+                    Return ONLY a JSON object with column names as keys and Faker method calls as values.
+                    Use the Java Faker library syntax (e.g., faker.name().firstName(), faker.internet().emailAddress(), etc.)
+                    
+                    Table: %s
+                    Columns:
+                    %s
+                    
+                    IMPORTANT: Return ONLY valid JSON, no markdown, no explanations, no code blocks.
+                    Example response:
+                    {"id": "faker.number().numberBetween(1, 10000)", "name": "faker.name().fullName()", "email": "faker.internet().emailAddress()}""",
+                    tableName, columnsInfo.toString());
 
-        // --- Fall back to SQL data type ---
-        return switch (typeName) {
-            case "INT", "INTEGER", "SMALLINT", "TINYINT" ->
-                    String.valueOf(faker.number().numberBetween(1, 10000));
-            case "BIGINT" ->
-                    String.valueOf(faker.number().numberBetween(1L, 1_000_000L));
-            case "FLOAT", "REAL" ->
-                    String.format("%.2f", faker.number().randomDouble(2, 1, 1000));
-            case "DOUBLE", "DECIMAL", "NUMERIC" ->
-                    String.format("%.2f", faker.number().randomDouble(2, 1, 10000));
-            case "BOOLEAN", "BOOL", "BIT" ->
-                    String.valueOf(faker.bool().bool());
-            case "DATE" ->
-                    quote(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650))
-                            .format(DATE_FORMATTER));
-            case "DATETIME", "TIMESTAMP" ->
-                    quote(LocalDate.now().minusDays(faker.number().numberBetween(0, 3650))
-                            .atStartOfDay().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
-            case "TEXT", "LONGTEXT", "MEDIUMTEXT", "CLOB" ->
-                    quote(faker.lorem().sentence());
-            default ->
-                    quote(faker.lorem().word()); // VARCHAR, CHAR, etc.
-        };
+            String response = chatClient.prompt()
+                    .user(prompt)
+                    .call()
+                    .content();
+
+            logger.debug("AI Faker suggestions: {}", response);
+            return parseAIResponse(response);
+        } catch (Exception e) {
+            logger.warn("Failed to get AI suggestions, using defaults: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
+    private Map<String, String> parseAIResponse(String response) {
+        try {
+            String jsonString = response.trim();
+            // Handle markdown code blocks if present
+            if (jsonString.contains("```json")) {
+                jsonString = jsonString.substring(jsonString.indexOf("```json") + 7, jsonString.lastIndexOf("```"));
+            } else if (jsonString.contains("```")) {
+                jsonString = jsonString.substring(jsonString.indexOf("```") + 3, jsonString.lastIndexOf("```"));
+            }
+            jsonString = jsonString.trim();
+            
+            return objectMapper.readValue(jsonString, Map.class);
+        } catch (Exception e) {
+            logger.error("Failed to parse AI response: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+
+    private String generateValueFromFaker(Faker faker, ColumnDefinition col, String fakerStatement, int rowIndex) {
+        try {
+            // Handle special cases
+            String colName = col.getColumnName().toLowerCase();
+            
+            if (colName.equals("id") || colName.endsWith("_id")) {
+                return String.valueOf(rowIndex);
+            }
+
+            // Execute the Faker statement dynamically
+            Object result = executeFakerStatement(faker, fakerStatement);
+            
+            // Determine if we need to quote this value
+            String typeName = col.getColDataType().getDataType().toUpperCase();
+            boolean needsQuotes = isStringType(typeName);
+
+            if (result == null) {
+                return needsQuotes ? "''" : "NULL";
+            }
+
+            String stringResult = result.toString();
+            return needsQuotes ? quote(stringResult) : stringResult;
+        } catch (Exception e) {
+            logger.warn("Failed to execute Faker statement '{}': {}, using fallback", fakerStatement, e.getMessage());
+            return quote(faker.lorem().word());
+        }
+    }
+
+    private Object executeFakerStatement(Faker faker, String statement) {
+        try {
+            // Dynamic execution: Parse "faker.method1().method2(args)" and execute via reflection
+            // Example: "faker.name().firstName()" 
+            // Example: "faker.number().numberBetween(1, 100)"
+            
+            if (statement == null || statement.isBlank()) {
+                return faker.lorem().word();
+            }
+
+            // Remove "faker." prefix if present
+            String chain = statement.replace("faker.", "");
+            
+            // Split by "()" to get method calls
+            String[] methodCalls = chain.split("\\(\\)");
+            
+            Object current = faker;
+            
+            for (int i = 0; i < methodCalls.length; i++) {
+                String methodCall = methodCalls[i];
+                
+                // Skip empty strings
+                if (methodCall.isBlank()) continue;
+                
+                // Check if this method call has parameters: method(arg1, arg2)
+                if (methodCall.contains("(")) {
+                    String methodName = methodCall.substring(0, methodCall.indexOf("("));
+                    String argsStr = methodCall.substring(methodCall.indexOf("(") + 1);
+                    
+                    // Parse parameters
+                    Object[] args = parseArguments(argsStr);
+                    Class<?>[] paramTypes = getParamTypes(args);
+                    
+                    // Invoke with parameters
+                    var method = current.getClass().getMethod(methodName, paramTypes);
+                    current = method.invoke(current, args);
+                } else {
+                    // Method call without parameters: method()
+                    String methodName = methodCall.trim();
+                    if (!methodName.isBlank()) {
+                        var method = current.getClass().getMethod(methodName);
+                        current = method.invoke(current);
+                    }
+                }
+            }
+            
+            return current;
+        } catch (Exception e) {
+            logger.debug("Error executing Faker statement '{}': {}", statement, e.getMessage());
+            return faker.lorem().word();
+        }
+    }
+
+    private Object[] parseArguments(String argsStr) {
+        if (argsStr == null || argsStr.isBlank()) {
+            return new Object[0];
+        }
+        
+        // Split by comma but be aware of nested structures
+        String[] argParts = argsStr.split(",");
+        Object[] args = new Object[argParts.length];
+        
+        for (int i = 0; i < argParts.length; i++) {
+            String arg = argParts[i].trim();
+            
+            // Try to parse as integer
+            try {
+                args[i] = Integer.parseInt(arg);
+                continue;
+            } catch (NumberFormatException e) {
+                // Not an integer
+            }
+            
+            // Try to parse as long
+            try {
+                args[i] = Long.parseLong(arg);
+                continue;
+            } catch (NumberFormatException e) {
+                // Not a long
+            }
+            
+            // Try to parse as double
+            try {
+                args[i] = Double.parseDouble(arg);
+                continue;
+            } catch (NumberFormatException e) {
+                // Not a double
+            }
+            
+            // Treat as string
+            args[i] = arg;
+        }
+        
+        return args;
+    }
+
+    private Class<?>[] getParamTypes(Object[] args) {
+        Class<?>[] types = new Class[args.length];
+        for (int i = 0; i < args.length; i++) {
+            if (args[i] instanceof Integer) {
+                types[i] = int.class;
+            } else if (args[i] instanceof Long) {
+                types[i] = long.class;
+            } else if (args[i] instanceof Double) {
+                types[i] = double.class;
+            } else if (args[i] instanceof String) {
+                types[i] = String.class;
+            } else {
+                types[i] = args[i].getClass();
+            }
+        }
+        return types;
+    }
+
+    private boolean isStringType(String sqlType) {
+        return sqlType.matches("VARCHAR|CHAR|TEXT|STRING|LONGTEXT|MEDIUMTEXT|CLOB|.*TEXT.*");
     }
 
     private String quote(String value) {
