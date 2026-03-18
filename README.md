@@ -162,3 +162,11 @@ Planned developments and improvements:
 - **UI improvements**: preview generated rows in the app, column-level customization, and downloadable export options.
 
 Contributions welcome — open a PR or issue with feature proposals or bug reports.
+
+### Correlated & Realistic Data (Planned)
+
+- **Name/email correlation**: generate consistent names, emails, and usernames (e.g., `Jane.Doe@example.com` from `Jane Doe`) across rows and related tables.
+- **Date correlation**: enforce realistic temporal relationships (created_at ≤ updated_at, order dates within plausible windows, relative dates across related records).
+- **Numeric relationships**: support derived fields and invariants (totals, sums, averages, and foreign-key aggregates) so generated numbers obey business rules.
+- **Cross-row correlation**: create related rows that share keys and realistic distributions (customers → orders → payments), with configurable cardinality and referential integrity.
+- **Configurable correlation rules**: allow users to define simple rule expressions or templates for correlations (e.g., `order_total = sum(order_items.price)`), with safe evaluation.
