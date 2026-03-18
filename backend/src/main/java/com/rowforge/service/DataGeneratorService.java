@@ -17,6 +17,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rowforge.model.DatasetGeneration;
 import com.rowforge.repository.DatasetGenerationRepository;
 
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -97,13 +100,6 @@ public class DataGeneratorService {
         }
     }
 
-    public String saveTrace() {
-
-
-
-        return null;
-    }
-
     private String generateForTable(CreateTable createTable, int rows, String format) {
         Faker faker = new Faker();
         String tableName = createTable.getTable().getName();
@@ -146,19 +142,23 @@ public class DataGeneratorService {
                 columnsInfo.append(String.format("- %s (%s)\n", col.getColumnName(), dataType));
             }
 
-            String prompt = String.format("""
-                    Analyze this database table schema and suggest the BEST datafaker (Java Faker library) method for each column.
-                    Return ONLY a JSON object with column names as keys and Faker method calls as values.
-                    Use the Java Faker library syntax (e.g., faker.name().firstName(), faker.internet().emailAddress(), etc.)
-                    
-                    Table: %s
-                    Columns:
-                    %s
-                    
-                    IMPORTANT: Return ONLY valid JSON, no markdown, no explanations, no code blocks.
-                    Example response:
-                    {"id": "faker.number().numberBetween(1, 10000)", "name": "faker.name().fullName()", "email": "faker.internet().emailAddress()}""",
-                    tableName, columnsInfo.toString());
+         String prompt = String.format("""
+    Analyze this database table schema and suggest the BEST Java Faker method for each column.
+    Return ONLY a JSON object with column names as keys and Faker method calls as values.
+    The Faker expressions MUST be valid Java Faker syntax only for version v1.0.0+ (current 2.1.0), current better, (net.datafaker) and returned as quoted strings.
+    Make sure the Faker type matches the column type (number → numeric method, string → string method, boolean → faker.bool().bool()).
+    For DATE/TIMESTAMP columns use ONLY: faker.date().past(365, java.util.concurrent.TimeUnit.DAYS) or faker.date().future(365, java.util.concurrent.TimeUnit.DAYS). The first argument MUST be at least 1. Never pass LocalDate or LocalDateTime as arguments.
+    If a column has a limited set of possible values, use faker.options().option(...) with realistic values.
+
+    IMPORTANT: Return ONLY valid JSON, no markdown, no explanations, no code blocks.
+
+    Table: %s
+    Columns:
+    %s
+
+    Example response:
+    {"id": "faker.number().numberBetween(1, 10000)", "name": "faker.name().fullName()", "email": "faker.internet().emailAddress()"}
+    """, tableName, columnsInfo.toString());
 
             String response = chatClient.prompt()
                     .user(prompt)
@@ -219,52 +219,35 @@ public class DataGeneratorService {
         }
     }
 
+    private record MethodCall(String methodName, String argsStr) {}
+
     private Object executeFakerStatement(Faker faker, String statement) {
         try {
-            // Dynamic execution: Parse "faker.method1().method2(args)" and execute via reflection
-            // Example: "faker.name().firstName()" 
-            // Example: "faker.number().numberBetween(1, 100)"
-            
             if (statement == null || statement.isBlank()) {
                 return faker.lorem().word();
             }
 
-            // Remove "faker." prefix if present
-            String chain = statement.replace("faker.", "");
-            
-            // Split by "()" to get method calls
-            String[] methodCalls = chain.split("\\(\\)");
-            
-            Object current = faker;
-            
-            for (int i = 0; i < methodCalls.length; i++) {
-                String methodCall = methodCalls[i];
-                
-                // Skip empty strings
-                if (methodCall.isBlank()) continue;
-                
-                // Check if this method call has parameters: method(arg1, arg2)
-                if (methodCall.contains("(")) {
-                    String methodName = methodCall.substring(0, methodCall.indexOf("("));
-                    String argsStr = methodCall.substring(methodCall.indexOf("(") + 1);
-                    
-                    // Parse parameters
-                    Object[] args = parseArguments(argsStr);
-                    Class<?>[] paramTypes = getParamTypes(args);
-                    
-                    // Invoke with parameters
-                    var method = current.getClass().getMethod(methodName, paramTypes);
-                    current = method.invoke(current, args);
-                } else {
-                    // Method call without parameters: method()
-                    String methodName = methodCall.trim();
-                    if (!methodName.isBlank()) {
-                        var method = current.getClass().getMethod(methodName);
-                        current = method.invoke(current);
-                    }
-                }
+            String chain = statement.trim();
+            if (chain.startsWith("faker.")) {
+                chain = chain.substring("faker.".length());
             }
-            
+
+            List<MethodCall> calls = parseMethodChain(chain, statement);
+            if (calls.isEmpty()) {
+                throw new IllegalArgumentException("Invalid faker statement syntax: " + statement);
+            }
+
+            Object current = faker;
+            for (MethodCall call : calls) {
+                Object[] args = parseArguments(call.argsStr());
+                Method method = findCompatibleMethod(current.getClass(), call.methodName(), args);
+                if (method == null) {
+                    throw new NoSuchMethodException(current.getClass().getName() + "." + call.methodName());
+                }
+                Object[] coercedArgs = coerceArgumentsForMethod(method, args);
+                current = method.invoke(current, coercedArgs);
+            }
+
             return current;
         } catch (Exception e) {
             logger.debug("Error executing Faker statement '{}': {}", statement, e.getMessage());
@@ -272,65 +255,340 @@ public class DataGeneratorService {
         }
     }
 
+    /**
+     * Parses a method-call chain (e.g. {@code date().past(365, TimeUnit.DAYS)}) into ordered
+     * {@link MethodCall} records using a bracket-depth counter so nested parens in arguments
+     * are handled correctly.
+     */
+    private List<MethodCall> parseMethodChain(String chain, String originalStatement) {
+        List<MethodCall> calls = new ArrayList<>();
+        int i = 0;
+        int len = chain.length();
+        while (i < len) {
+            if (chain.charAt(i) == '.') i++;
+            if (i >= len) break;
+
+            // Read method name
+            int nameStart = i;
+            while (i < len && (Character.isLetterOrDigit(chain.charAt(i)) || chain.charAt(i) == '_')) i++;
+            if (i >= len || chain.charAt(i) != '(') {
+                throw new IllegalArgumentException("Invalid faker statement syntax: " + originalStatement);
+            }
+            String methodName = chain.substring(nameStart, i);
+
+            // Read arguments, tracking bracket depth
+            i++; // skip opening '('
+            int argsStart = i;
+            int depth = 1;
+            while (i < len && depth > 0) {
+                char c = chain.charAt(i);
+                if (c == '(') depth++;
+                else if (c == ')') depth--;
+                i++;
+            }
+            if (depth != 0) {
+                throw new IllegalArgumentException("Unmatched parentheses in faker statement: " + originalStatement);
+            }
+            String argsStr = chain.substring(argsStart, i - 1); // exclude closing ')'
+            calls.add(new MethodCall(methodName, argsStr));
+        }
+        return calls;
+    }
+
     private Object[] parseArguments(String argsStr) {
         if (argsStr == null || argsStr.isBlank()) {
             return new Object[0];
         }
-        
-        // Split by comma but be aware of nested structures
-        String[] argParts = argsStr.split(",");
-        Object[] args = new Object[argParts.length];
-        
-        for (int i = 0; i < argParts.length; i++) {
-            String arg = argParts[i].trim();
-            
-            // Try to parse as integer
-            try {
-                args[i] = Integer.parseInt(arg);
-                continue;
-            } catch (NumberFormatException e) {
-                // Not an integer
-            }
-            
-            // Try to parse as long
-            try {
-                args[i] = Long.parseLong(arg);
-                continue;
-            } catch (NumberFormatException e) {
-                // Not a long
-            }
-            
-            // Try to parse as double
-            try {
-                args[i] = Double.parseDouble(arg);
-                continue;
-            } catch (NumberFormatException e) {
-                // Not a double
-            }
-            
-            // Treat as string
-            args[i] = arg;
+
+        List<String> argParts = splitArguments(argsStr);
+        Object[] args = new Object[argParts.size()];
+        for (int i = 0; i < argParts.size(); i++) {
+            args[i] = parseArgument(argParts.get(i));
         }
-        
+
         return args;
     }
 
-    private Class<?>[] getParamTypes(Object[] args) {
-        Class<?>[] types = new Class[args.length];
-        for (int i = 0; i < args.length; i++) {
-            if (args[i] instanceof Integer) {
-                types[i] = int.class;
-            } else if (args[i] instanceof Long) {
-                types[i] = long.class;
-            } else if (args[i] instanceof Double) {
-                types[i] = double.class;
-            } else if (args[i] instanceof String) {
-                types[i] = String.class;
-            } else {
-                types[i] = args[i].getClass();
+    private List<String> splitArguments(String argsStr) {
+        List<String> parts = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        boolean inSingleQuote = false;
+        boolean inDoubleQuote = false;
+
+        for (int i = 0; i < argsStr.length(); i++) {
+            char c = argsStr.charAt(i);
+            if (c == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote;
+            } else if (c == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote;
+            } else if (c == '(' && !inSingleQuote && !inDoubleQuote) {
+                depth++;
+            } else if (c == ')' && !inSingleQuote && !inDoubleQuote && depth > 0) {
+                depth--;
+            }
+
+            if (c == ',' && depth == 0 && !inSingleQuote && !inDoubleQuote) {
+                parts.add(current.toString().trim());
+                current.setLength(0);
+                continue;
+            }
+
+            current.append(c);
+        }
+
+        if (!current.isEmpty()) {
+            parts.add(current.toString().trim());
+        }
+        return parts;
+    }
+
+    private Object parseArgument(String arg) {
+        String trimmed = arg == null ? "" : arg.trim();
+        if (trimmed.isEmpty()) {
+            return "";
+        }
+
+        if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
+                || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+            return trimmed.substring(1, trimmed.length() - 1);
+        }
+
+        if ("true".equalsIgnoreCase(trimmed) || "false".equalsIgnoreCase(trimmed)) {
+            return Boolean.parseBoolean(trimmed);
+        }
+
+        try {
+            return Integer.parseInt(trimmed);
+        } catch (NumberFormatException ignored) {
+            // Not an integer
+        }
+
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ignored) {
+            // Not a long
+        }
+
+        try {
+            return Double.parseDouble(trimmed);
+        } catch (NumberFormatException ignored) {
+            // Not a double
+        }
+
+        // Try static method call e.g. java.time.LocalDate.now()
+        if (trimmed.contains("(") && trimmed.endsWith(")")) {
+            Object staticResult = resolveStaticMethodCall(trimmed);
+            if (staticResult != null) {
+                return staticResult;
             }
         }
-        return types;
+
+        Object enumOrStaticField = resolveEnumOrStaticField(trimmed);
+        if (enumOrStaticField != null) {
+            return enumOrStaticField;
+        }
+
+        return trimmed;
+    }
+
+    private Object resolveStaticMethodCall(String expr) {
+        int parenIdx = expr.indexOf('(');
+        if (parenIdx <= 0) return null;
+
+        String qualifiedMethod = expr.substring(0, parenIdx);
+        String argsStr = expr.substring(parenIdx + 1, expr.length() - 1);
+
+        int lastDot = qualifiedMethod.lastIndexOf('.');
+        if (lastDot <= 0) return null;
+
+        String className = qualifiedMethod.substring(0, lastDot);
+        String methodName = qualifiedMethod.substring(lastDot + 1);
+
+        try {
+            Class<?> clazz = Class.forName(className);
+            Object[] args = parseArguments(argsStr);
+            Method method = findCompatibleMethod(clazz, methodName, args);
+            if (method != null && java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                Object[] coercedArgs = coerceArgumentsForMethod(method, args);
+                return method.invoke(null, coercedArgs);
+            }
+        } catch (Exception ignored) {
+            // Not a static method call
+        }
+        return null;
+    }
+
+    private Object resolveEnumOrStaticField(String value) {
+        int lastDot = value.lastIndexOf('.');
+        if (lastDot <= 0 || lastDot == value.length() - 1) {
+            return null;
+        }
+
+        String className = value.substring(0, lastDot);
+        String fieldName = value.substring(lastDot + 1);
+        try {
+            Class<?> clazz = Class.forName(className);
+            if (clazz.isEnum()) {
+                @SuppressWarnings({"rawtypes", "unchecked"})
+                Object enumValue = Enum.valueOf((Class<? extends Enum>) clazz.asSubclass(Enum.class), fieldName);
+                return enumValue;
+            }
+
+            Field field = clazz.getField(fieldName);
+            if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                return field.get(null);
+            }
+        } catch (Exception ignored) {
+            // Not an enum/static field expression
+        }
+
+        return null;
+    }
+
+    private Method findCompatibleMethod(Class<?> clazz, String methodName, Object[] args) {
+        // First: exact arity match (non-varargs)
+        for (Method method : clazz.getMethods()) {
+            if (!method.getName().equals(methodName) || method.getParameterCount() != args.length) {
+                continue;
+            }
+
+            Class<?>[] paramTypes = method.getParameterTypes();
+            boolean compatible = true;
+            for (int i = 0; i < paramTypes.length; i++) {
+                if (!isArgumentCompatible(paramTypes[i], args[i])) {
+                    compatible = false;
+                    break;
+                }
+            }
+
+            if (compatible) {
+                return method;
+            }
+        }
+
+        // Second: varargs match
+        for (Method method : clazz.getMethods()) {
+            if (!method.getName().equals(methodName) || !method.isVarArgs()) {
+                continue;
+            }
+            Class<?>[] paramTypes = method.getParameterTypes();
+            int fixedCount = paramTypes.length - 1;
+            if (args.length < fixedCount) continue;
+
+            boolean compatible = true;
+            for (int i = 0; i < fixedCount; i++) {
+                if (!isArgumentCompatible(paramTypes[i], args[i])) {
+                    compatible = false;
+                    break;
+                }
+            }
+            if (!compatible) continue;
+
+            Class<?> componentType = paramTypes[fixedCount].getComponentType();
+            for (int i = fixedCount; i < args.length; i++) {
+                if (!isArgumentCompatible(componentType, args[i])) {
+                    compatible = false;
+                    break;
+                }
+            }
+            if (compatible) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private boolean isArgumentCompatible(Class<?> paramType, Object arg) {
+        if (arg == null) {
+            return !paramType.isPrimitive();
+        }
+
+        Class<?> argType = arg.getClass();
+        if (paramType.isAssignableFrom(argType)) {
+            return true;
+        }
+
+        if (paramType.isPrimitive()) {
+            return switch (paramType.getName()) {
+                case "int" -> arg instanceof Number;
+                case "long" -> arg instanceof Number;
+                case "double" -> arg instanceof Number;
+                case "float" -> arg instanceof Number;
+                case "short" -> arg instanceof Number;
+                case "byte" -> arg instanceof Number;
+                case "boolean" -> arg instanceof Boolean;
+                case "char" -> arg instanceof Character || (arg instanceof String s && s.length() == 1);
+                default -> false;
+            };
+        }
+
+        if (paramType.isEnum() && arg instanceof String) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Object[] coerceArgumentsForMethod(Method method, Object[] args) {
+        Class<?>[] paramTypes = method.getParameterTypes();
+        if (!method.isVarArgs()) {
+            Object[] coerced = new Object[args.length];
+            for (int i = 0; i < args.length; i++) {
+                coerced[i] = coerceArgument(paramTypes[i], args[i]);
+            }
+            return coerced;
+        }
+
+        int fixedCount = paramTypes.length - 1;
+        Object[] coerced = new Object[paramTypes.length];
+        for (int i = 0; i < fixedCount; i++) {
+            coerced[i] = coerceArgument(paramTypes[i], args[i]);
+        }
+
+        Class<?> componentType = paramTypes[fixedCount].getComponentType();
+        Object varargArray = Array.newInstance(componentType, args.length - fixedCount);
+        for (int i = fixedCount; i < args.length; i++) {
+            Array.set(varargArray, i - fixedCount, coerceArgument(componentType, args[i]));
+        }
+        coerced[fixedCount] = varargArray;
+        return coerced;
+    }
+
+    private Object coerceArgument(Class<?> targetType, Object arg) {
+        if (arg == null) {
+            return null;
+        }
+
+        if (targetType.isAssignableFrom(arg.getClass())) {
+            return arg;
+        }
+
+        if (targetType.isPrimitive()) {
+            if (arg instanceof Number number) {
+                return switch (targetType.getName()) {
+                    case "int" -> number.intValue();
+                    case "long" -> number.longValue();
+                    case "double" -> number.doubleValue();
+                    case "float" -> number.floatValue();
+                    case "short" -> number.shortValue();
+                    case "byte" -> number.byteValue();
+                    default -> arg;
+                };
+            }
+            if (targetType == char.class && arg instanceof String s && s.length() == 1) {
+                return s.charAt(0);
+            }
+            return arg;
+        }
+
+        if (targetType.isEnum() && arg instanceof String s) {
+            @SuppressWarnings({"rawtypes", "unchecked"})
+            Object enumValue = Enum.valueOf((Class<? extends Enum>) targetType.asSubclass(Enum.class), s);
+            return enumValue;
+        }
+
+        return arg;
     }
 
     private boolean isStringType(String sqlType) {
