@@ -22,7 +22,6 @@ services:
   - type: web
     name: rowforge-web
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: |
       yarn install
