@@ -1,0 +1,53 @@
+services:
+  - type: web
+    name: rowforge-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        fromDatabase:
+          name: rowforge-db
+          property: connectionString
+      - key: SUPABASE_DB_USERNAME
+        fromDatabase:
+          name: rowforge-db
+          property: user
+      - key: SUPABASE_DB_PASSWORD
+        fromDatabase:
+          name: rowforge-db
+          property: password
+
+  - type: web
+    name: rowforge-web
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: |
+      yarn install --frozen-lockfile
+      mkdir -p src/assets
+      printf 'window.__ROWFORGE_ENV__ = { API_BASE_URL: "%s" };\n' "$API_BASE_URL" > src/assets/runtime-config.js
+      yarn build --output-path dist/render
+    staticPublishPath: ./frontend/dist/render/browser
+    autoDeployTrigger: commit
+    envVars:
+      - key: API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+databases:
+  - name: rowforge-db
+    plan: free
+    region: frankfurt
+    databaseName: rowforge
+    user: rowforge
