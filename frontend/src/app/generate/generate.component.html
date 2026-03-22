@@ -1,0 +1,59 @@
+<div class="container">
+  <header class="header">
+    <h1>⚒ RowForge</h1>
+    <p class="subtitle">SQL Test Data Generator — paste a schema, get realistic fake data instantly.</p>
+  </header>
+
+  <div class="card">
+    <div class="form-group">
+      <label for="sql">SQL Schema</label>
+      <textarea
+        id="sql"
+        [(ngModel)]="sql"
+        rows="10"
+        placeholder="Paste your CREATE TABLE statement here…"
+        spellcheck="false"
+      ></textarea>
+    </div>
+
+    <div class="options-row">
+      <div class="form-group inline">
+        <label for="rows">Number of Rows</label>
+        <input
+          id="rows"
+          type="number"
+          [(ngModel)]="rows"
+          min="1"
+          max="10000"
+        />
+      </div>
+
+      <div class="form-group inline">
+        <label for="format">Output Format</label>
+        <select id="format" [(ngModel)]="format">
+          <option value="SQL">SQL (INSERT statements)</option>
+          <option value="CSV">CSV</option>
+          <option value="JSON">JSON</option>
+        </select>
+      </div>
+
+      <button class="btn-generate" (click)="generate()" [disabled]="loading">
+        {{ loading ? 'Generating…' : '⚡ Generate' }}
+      </button>
+    </div>
+
+    <div class="error" *ngIf="error">⚠ {{ error }}</div>
+
+    <div class="result-section" *ngIf="result">
+      <div class="result-header">
+        <span class="result-label">Generated Data</span>
+        <a
+          class="btn-download"
+          [href]="downloadUrl"
+          [download]="downloadFilename"
+        >⬇ Download {{ downloadFilename }}</a>
+      </div>
+      <pre class="output">{{ result }}</pre>
+    </div>
+  </div>
+</div>

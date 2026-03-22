@@ -1,1 +1,186 @@
-# rowforge
+# RowForge
+
+> **SQL Test Data Generator** — paste a `CREATE TABLE` schema, get realistic fake data instantly.
+
+RowForge is a full-stack developer tool that lets you generate SQL, CSV, or JSON test data from a SQL schema in seconds. It uses [DataFaker](https://datafaker.net/) for realistic values and [JSQLParser](https://github.com/JSQLParser/JSqlParser) to parse your schema.
+
+---
+
+## Tech Stack
+
+| Layer    | Technology                      |
+|----------|---------------------------------|
+| Backend  | Java 17, Spring Boot 3, Maven   |
+| Frontend | Angular 17, TypeScript          |
+| Faker    | DataFaker 2.x                   |
+| Parser   | JSQLParser 4.x                  |
+
+---
+
+## Project Structure
+
+```
+rowforge/
+├── backend/                       # Spring Boot application
+│   ├── src/main/java/com/rowforge/
+│   │   ├── RowForgeApplication.java
+│   │   ├── controller/GenerateController.java
+│   │   ├── service/DataGeneratorService.java
+│   │   └── model/Schema.java
+│   └── pom.xml
+└── frontend/                      # Angular application
+    ├── src/app/
+    │   ├── app.module.ts
+    │   ├── app.component.ts
+    │   └── generate/
+    │       ├── generate.component.ts
+    │       ├── generate.component.html
+    │       └── generate.component.css
+    ├── angular.json
+    └── package.json
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Java 17+
+- Maven 3.8+
+- Node.js 18+ and npm 9+
+
+If you use SDKMAN, this repository includes a `.sdkmanrc` pinned to Java 21. Activate it from the project root:
+
+```bash
+cd /workspaces/rowforge
+sdk env
+java -version
+```
+
+If your shell still uses Java 11, set `JAVA_HOME` manually:
+
+```bash
+export JAVA_HOME=/usr/local/sdkman/candidates/java/21.0.9-ms
+export PATH="$JAVA_HOME/bin:$PATH"
+java -version
+```
+
+### 1 – Run the Backend
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+Dataset generation works without a database. To enable persistence logs in Supabase/PostgreSQL, export:
+
+```bash
+export SUPABASE_DB_URL="jdbc:postgresql://<host>:5432/<database>?sslmode=require"
+export SUPABASE_DB_USERNAME="<username>"
+export SUPABASE_DB_PASSWORD="<password>"
+```
+
+The API will be available at `http://localhost:8080`.
+
+### 2 – Run the Frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Open `http://localhost:4200` in your browser. The dev server proxies `/api/*` requests to the backend automatically.
+
+---
+
+## API
+
+### `POST /api/generate`
+
+**Request body (JSON):**
+
+```json
+{
+  "sql": "CREATE TABLE users (id INT, first_name VARCHAR(50), email VARCHAR(100));",
+  "rows": 100,
+  "format": "SQL"
+}
+```
+
+| Field    | Type   | Description                          |
+|----------|--------|--------------------------------------|
+| `sql`    | string | One or more `CREATE TABLE` statements |
+| `rows`   | int    | Number of rows to generate (1–10000) |
+| `format` | string | `SQL`, `CSV`, or `JSON`              |
+
+**Response:** plain text containing the generated data.
+
+---
+
+## Correlated Data Generation
+
+RowForge automatically detects columns that should be consistent within a row (e.g., `first_name`, `last_name`, `email`, `username`) and generates correlated values. The AI suggests which fields belong together and provides derivation templates, while the backend validates and enforces the final values.
+
+**How it works:**
+1. Faker is the default generator for every column.
+2. The AI returns an optional correlation plan grouping related columns (e.g., a "person" group linking `first_name`, `last_name`, `email`).
+3. Base columns are generated via Faker first; derived columns are built from templates like `{first_name}.{last_name}@example.com`.
+4. If the AI returns invalid or missing correlation data, the service falls back to independent Faker generation.
+
+**Scope:** same-row correlation only. Foreign-key enforcement and cross-table referential integrity are not yet supported.
+
+---
+
+## Example Schema
+
+```sql
+CREATE TABLE users (
+  id          INT,
+  first_name  VARCHAR(50),
+  last_name   VARCHAR(50),
+  email       VARCHAR(100),
+  phone       VARCHAR(20),
+  city        VARCHAR(50),
+  created_at  DATETIME
+);
+```
+
+---
+
+## Running Tests
+
+```bash
+cd backend
+mvn test
+```
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Ugaitz Cordero
+
+---
+
+## Roadmap
+
+Planned developments and improvements:
+
+- **Improve Faker execution**: robust handling for varargs, `faker.options().option(...)`, and edge cases such as zero-day `faker.date().past(0, TimeUnit.DAYS)` to avoid runtime fallbacks.
+- **Better AI-driven suggestions**: improve prompt handling and validation for suggested `faker` expressions from the AI, with stricter parsing and safe defaults.
+- **Schema features**: support column-level constraints (ENUM-like sets, CHECK constraints) and richer date/time types mapping.
+- **Export enhancements**: streaming large CSV/JSON exports and configurable SQL dialects (Postgres, MySQL, SQLite).
+- **Persistence and analytics**: optional Supabase/Postgres persistence for generation history, plus usage analytics and anonymized telemetry.
+- **UI improvements**: preview generated rows in the app, column-level customization, and downloadable export options.
+
+Contributions welcome — open a PR or issue with feature proposals or bug reports.
+
+### Correlated & Realistic Data (Planned)
+
+- **Name/email correlation**: ✅ generates consistent names, emails, and usernames (e.g., `Jane.Doe@example.com` from `Jane Doe`) within each row, powered by LLM-assisted correlation plans with Faker as the baseline.
+- **Date correlation**: enforce realistic temporal relationships (created_at ≤ updated_at, order dates within plausible windows, relative dates across related records).
+- **Numeric relationships**: support derived fields and invariants (totals, sums, averages, and foreign-key aggregates) so generated numbers obey business rules.
+- **Cross-row correlation**: create related rows that share keys and realistic distributions (customers → orders → payments), with configurable cardinality and referential integrity.
+- **Configurable correlation rules**: allow users to define simple rule expressions or templates for correlations (e.g., `order_total = sum(order_items.price)`), with safe evaluation.
