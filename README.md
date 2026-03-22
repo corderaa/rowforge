@@ -119,6 +119,20 @@ Open `http://localhost:4200` in your browser. The dev server proxies `/api/*` re
 
 ---
 
+## Correlated Data Generation
+
+RowForge automatically detects columns that should be consistent within a row (e.g., `first_name`, `last_name`, `email`, `username`) and generates correlated values. The AI suggests which fields belong together and provides derivation templates, while the backend validates and enforces the final values.
+
+**How it works:**
+1. Faker is the default generator for every column.
+2. The AI returns an optional correlation plan grouping related columns (e.g., a "person" group linking `first_name`, `last_name`, `email`).
+3. Base columns are generated via Faker first; derived columns are built from templates like `{first_name}.{last_name}@example.com`.
+4. If the AI returns invalid or missing correlation data, the service falls back to independent Faker generation.
+
+**Scope:** same-row correlation only. Foreign-key enforcement and cross-table referential integrity are not yet supported.
+
+---
+
 ## Example Schema
 
 ```sql
@@ -165,7 +179,7 @@ Contributions welcome — open a PR or issue with feature proposals or bug repor
 
 ### Correlated & Realistic Data (Planned)
 
-- **Name/email correlation**: generate consistent names, emails, and usernames (e.g., `Jane.Doe@example.com` from `Jane Doe`) across rows and related tables.
+- **Name/email correlation**: ✅ generates consistent names, emails, and usernames (e.g., `Jane.Doe@example.com` from `Jane Doe`) within each row, powered by LLM-assisted correlation plans with Faker as the baseline.
 - **Date correlation**: enforce realistic temporal relationships (created_at ≤ updated_at, order dates within plausible windows, relative dates across related records).
 - **Numeric relationships**: support derived fields and invariants (totals, sums, averages, and foreign-key aggregates) so generated numbers obey business rules.
 - **Cross-row correlation**: create related rows that share keys and realistic distributions (customers → orders → payments), with configurable cardinality and referential integrity.
