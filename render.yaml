@@ -13,17 +13,11 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: SUPABASE_DB_URL
-        fromDatabase:
-          name: rowforge-db
-          property: connectionString
+        sync: false
       - key: SUPABASE_DB_USERNAME
-        fromDatabase:
-          name: rowforge-db
-          property: user
+        sync: false
       - key: SUPABASE_DB_PASSWORD
-        fromDatabase:
-          name: rowforge-db
-          property: password
+        sync: false
 
   - type: web
     name: rowforge-web
@@ -31,7 +25,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: |
-      yarn install --frozen-lockfile
+      yarn install
       mkdir -p src/assets
       printf 'window.__ROWFORGE_ENV__ = { API_BASE_URL: "%s" };\n' "$API_BASE_URL" > src/assets/runtime-config.js
       yarn build --output-path dist/render
@@ -44,10 +38,3 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
-
-databases:
-  - name: rowforge-db
-    plan: free
-    region: frankfurt
-    databaseName: rowforge
-    user: rowforge
