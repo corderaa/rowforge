@@ -186,12 +186,24 @@ public class DataGeneratorService {
 
     private GenerationPlan getAIGenerationPlan(String tableName, List<ColumnDefinition> columns) {
         try {
+            // Sanitize table name: only allow alphanumeric and underscores
+            String safeTableName = tableName.replaceAll("[^a-zA-Z0-9_]", "");
+
             StringBuilder columnsInfo = new StringBuilder();
             for (ColumnDefinition col : columns) {
-                String dataType = col.getColDataType().toString();
+                // Sanitize column names and types to prevent prompt injection
+                String safeColName = col.getColumnName().replaceAll("[^a-zA-Z0-9_]", "");
+                String dataType = col.getColDataType().toString().replaceAll("[^a-zA-Z0-9_() ,]", "");
                 List<String> specs = col.getColumnSpecs();
-                String specsStr = (specs != null && !specs.isEmpty()) ? " " + String.join(" ", specs) : "";
-                columnsInfo.append(String.format("- %s (%s%s)\n", col.getColumnName(), dataType, specsStr));
+                String specsStr = "";
+                if (specs != null && !specs.isEmpty()) {
+                    // Only allow known SQL keywords in column specs
+                    specsStr = " " + specs.stream()
+                            .map(s -> s.replaceAll("[^a-zA-Z0-9_() ,'\".]", ""))
+                            .reduce((a, b) -> a + " " + b)
+                            .orElse("");
+                }
+                columnsInfo.append(String.format("- %s (%s%s)\n", safeColName, dataType, specsStr));
             }
 
             String prompt = String.format(
@@ -323,7 +335,7 @@ public class DataGeneratorService {
                             Example 3 - No correlations needed:
                             {"columns": {"product_id": "faker.number().numberBetween(1, 10000)", "product_name": "faker.commerce().productName()", "price": "faker.commerce().price()"}, "correlations": []}
                                 """,
-                    tableName, columnsInfo.toString());
+                    safeTableName, columnsInfo.toString());
 
             String response = chatClient.prompt()
                     .user(prompt)

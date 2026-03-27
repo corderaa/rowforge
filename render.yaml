@@ -18,6 +18,8 @@ services:
         sync: false
       - key: SUPABASE_DB_PASSWORD
         sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
 
   - type: web
     name: rowforge-web

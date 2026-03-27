@@ -10,14 +10,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = "*")
 public class GenerateController {
 
     private static final Logger logger = LoggerFactory.getLogger(GenerateController.class);
+    private static final Set<String> ALLOWED_FORMATS = Set.of("SQL", "CSV", "JSON");
+    private static final int MAX_SQL_LENGTH = 50_000;
 
     private final DataGeneratorService dataGeneratorService;
 
@@ -37,12 +39,19 @@ public class GenerateController {
         if (schema.getSql() == null || schema.getSql().isBlank()) {
             return ResponseEntity.badRequest().body("SQL schema must not be empty.");
         }
+        if (schema.getSql().length() > MAX_SQL_LENGTH) {
+            return ResponseEntity.badRequest().body("SQL schema is too large. Maximum " + MAX_SQL_LENGTH + " characters.");
+        }
         if (schema.getRows() <= 0 || schema.getRows() > 10000) {
             return ResponseEntity.badRequest().body("Rows must be between 1 and 10000.");
         }
         if (schema.getFormat() == null || schema.getFormat().isBlank()) {
             schema.setFormat("SQL");
         }
+        if (!ALLOWED_FORMATS.contains(schema.getFormat().toUpperCase())) {
+            return ResponseEntity.badRequest().body("Format must be one of: SQL, CSV, JSON.");
+        }
+        schema.setFormat(schema.getFormat().toUpperCase());
 
         try {
             String result = dataGeneratorService.generate(
