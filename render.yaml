@@ -6,7 +6,7 @@ services:
     region: frankfurt
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    autoDeployTrigger: commit
+    autoDeploy: yes
     envVars:
       - key: PORT
         value: 10000
@@ -24,12 +24,12 @@ services:
     runtime: static
     rootDir: frontend
     buildCommand: |
-      yarn install
+      npm install
       mkdir -p src/assets
       printf 'window.__ROWFORGE_ENV__ = { API_BASE_URL: "%s" };\n' "$API_BASE_URL" > src/assets/runtime-config.js
-      yarn build --output-path dist/render
-    staticPublishPath: ./frontend/dist/render/browser
-    autoDeployTrigger: commit
+      npm run build -- --output-path dist/render
+    staticPublishPath: ./dist/render/browser
+    autoDeploy: yes
     envVars:
       - key: API_BASE_URL
         sync: false
