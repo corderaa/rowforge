@@ -1,6 +1,14 @@
 import { Component, OnDestroy } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
+declare global {
+  interface Window {
+    __ROWFORGE_ENV__?: {
+      API_BASE_URL?: string;
+    };
+  }
+}
+
 @Component({
   selector: 'app-generate',
   templateUrl: './generate.component.html',
@@ -23,7 +31,7 @@ export class GenerateComponent implements OnDestroy {
   error = '';
 
   private _downloadUrl = '';
-  private readonly apiUrl = '/api/generate';
+  private readonly apiUrl = `${window.__ROWFORGE_ENV__?.API_BASE_URL ?? ''}/api/generate`;
   private readonly anonIdStorageKey = 'rowforgeAnonId';
 
   constructor(private http: HttpClient) {}

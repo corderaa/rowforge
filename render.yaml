@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: rowforge-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    autoDeploy: yes
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_DB_USERNAME
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+
+  - type: web
+    name: rowforge-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: |
+      npm install
+      mkdir -p src/assets
+      printf 'window.__ROWFORGE_ENV__ = { API_BASE_URL: "%s" };\n' "$API_BASE_URL" > src/assets/runtime-config.js
+      npm run build -- --output-path dist/render
+    staticPublishPath: ./dist/render/browser
+    autoDeploy: yes
+    envVars:
+      - key: API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
